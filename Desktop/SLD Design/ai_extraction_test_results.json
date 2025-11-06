@@ -1,0 +1,99 @@
+{
+  "test_timestamp": "2025-11-02T06:58:30.513010",
+  "summary": {
+    "total_files": 4,
+    "successful_files": 4,
+    "total_components": 73,
+    "average_confidence": 0.9
+  },
+  "file_results": {
+    "Advanced_Manufacturing_Plant_-_Electrical_Distribution_LoadList.xlsx": {
+      "overall_confidence": 0.9,
+      "total_components": 37,
+      "processing_time_seconds": 3.141594,
+      "sheet_results": {
+        "Load List": {
+          "sheet_type": "load_schedule",
+          "confidence": 0.9,
+          "components_extracted": 18,
+          "data_quality_score": 1.0,
+          "issues_count": 0,
+          "warnings_count": 0
+        }
+      },
+      "corrections_count": 22,
+      "validation_issues_count": 13,
+      "project_summary": {
+        "loads_count": 18,
+        "cables_count": 18,
+        "buses_count": 1
+      }
+    },
+    "Advanced_Manufacturing_Plant_-_Electrical_Distribution_CableSchedule.xlsx": {
+      "overall_confidence": 0.9,
+      "total_components": 19,
+      "processing_time_seconds": 0.030519,
+      "sheet_results": {
+        "Cable Schedule": {
+          "sheet_type": "cable_schedule",
+          "confidence": 0.9,
+          "components_extracted": 18,
+          "data_quality_score": 1.0,
+          "issues_count": 0,
+          "warnings_count": 0
+        }
+      },
+      "corrections_count": 1,
+      "validation_issues_count": 0,
+      "project_summary": {
+        "loads_count": 0,
+        "cables_count": 18,
+        "buses_count": 1
+      }
+    },
+    "New_Electrical_Project_LoadList.xlsx": {
+      "overall_confidence": 0.9,
+      "total_components": 11,
+      "processing_time_seconds": 0.034319,
+      "sheet_results": {
+        "Load List": {
+          "sheet_type": "load_schedule",
+          "confidence": 0.9,
+          "components_extracted": 5,
+          "data_quality_score": 1.0,
+          "issues_count": 0,
+          "warnings_count": 0
+        }
+      },
+      "corrections_count": 11,
+      "validation_issues_count": 5,
+      "project_summary": {
+        "loads_count": 5,
+        "cables_count": 5,
+        "buses_count": 1
+      }
+    },
+    "New_Electrical_Project_CableSchedule.xlsx": {
+      "overall_confidence": 0.9,
+      "total_components": 6,
+      "processing_time_seconds": 0.030501,
+      "sheet_results": {
+        "Cable Schedule": {
+          "sheet_type": "cable_schedule",
+          "confidence": 0.9,
+          "components_extracted": 5,
+          "data_quality_score": 1.0,
+          "issues_count": 0,
+          "warnings_count": 0
+        }
+      },
+      "corrections_count": 6,
+      "validation_issues_count": 0,
+      "project_summary": {
+        "loads_count": 0,
+        "cables_count": 5,
+        "buses_count": 1
+      }
+    }
+  }
+}

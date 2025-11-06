@@ -1,0 +1,1925 @@
+# Testing Guide - AI Excel Extraction System
+
+## Overview
+
+This comprehensive testing guide covers all aspects of testing the AI-Powered Excel Extraction System, including unit tests, integration tests, performance tests, and validation procedures for ensuring system reliability and quality.
+
+## 📋 Testing Framework
+
+### Testing Architecture
+
+The system employs a multi-layered testing approach:
+
+1. **Unit Tests** - Individual component testing
+2. **Integration Tests** - Component interaction testing
+3. **End-to-End Tests** - Full workflow testing
+4. **Performance Tests** - Load and stress testing
+5. **Security Tests** - Vulnerability and penetration testing
+6. **User Acceptance Tests** - Business requirement validation
+
+### Test Structure
+
+```
+tests/
+├── unit/                    # Unit tests
+│   ├── ai_models/
+│   ├── processing/
+│   ├── database/
+│   ├── api/
+│   └── utils/
+├── integration/             # Integration tests
+│   ├── workflow/
+│   ├── database/
+│   ├── api/
+│   └── external_services/
+├── performance/             # Performance tests
+│   ├── load/
+│   ├── stress/
+│   ├── endurance/
+│   └── scalability/
+├── security/                # Security tests
+│   ├── authentication/
+│   ├── authorization/
+│   ├── data_protection/
+│   └── vulnerability/
+├── acceptance/              # User acceptance tests
+│   ├── business_requirements/
+│   ├── user_scenarios/
+│   └── compliance/
+├── fixtures/                # Test data
+├── mocks/                   # Mock objects
+└── utilities/               # Test utilities
+```
+
+## 🧪 Unit Testing
+
+### Core Component Tests
+
+#### AI Model Tests
+```python
+# tests/unit/ai_models/test_neural_network.py
+import unittest
+import numpy as np
+from unittest.mock import Mock, patch
+from ai_excel_extractor.ai_models.neural_network import NeuralNetworkModel
+
+class TestNeuralNetworkModel(unittest.TestCase):
+    
+    def setUp(self):
+        """Set up test fixtures"""
+        self.model = NeuralNetworkModel()
+        self.test_data = {
+            'headers': ['Load Name', 'Power (kW)', 'Voltage (V)', 'Current (A)'],
+            'data': [
+                ['Motor 1', 15.5, 480, 18.6],
+                ['Lighting', 5.2, 120, 43.3],
+                ['HVAC', 25.0, 480, 30.1]
+            ]
+        }
+        
+    def test_model_initialization(self):
+        """Test model initialization"""
+        self.assertIsNotNone(self.model)
+        self.assertEqual(self.model.model_type, 'neural_network')
+        self.assertIsNotNone(self.model.confidence_threshold)
+        
+    def test_data_preprocessing(self):
+        """Test data preprocessing"""
+        processed = self.model.preprocess(self.test_data)
+        
+        # Check data structure
+        self.assertIn('normalized_data', processed)
+        self.assertIn('feature_vectors', processed)
+        
+        # Check normalization
+        self.assertTrue(np.all(processed['normalized_data'] >= 0))
+        self.assertTrue(np.all(processed['normalized_data'] <= 1))
+        
+    def test_inference(self):
+        """Test model inference"""
+        with patch.object(self.model, 'load_model'):
+            self.model.load_model.return_value = None
+            
+            result = self.model.predict(self.test_data)
+            
+            # Check result structure
+            self.assertIn('extracted_data', result)
+            self.assertIn('confidence_scores', result)
+            self.assertIn('metadata', result)
+            
+            # Check data quality
+            self.assertEqual(len(result['extracted_data']), 3)  # 3 loads
+            self.assertTrue(all(score >= 0 and score <= 1 
+                              for score in result['confidence_scores']))
+            
+    def test_confidence_threshold(self):
+        """Test confidence threshold filtering"""
+        low_confidence_data = {'confidence_scores': [0.7, 0.6, 0.8]}
+        high_confidence_data = {'confidence_scores': [0.95, 0.92, 0.97]}
+        
+        filtered_low = self.model.filter_by_confidence(
+            low_confidence_data, threshold=0.85)
+        filtered_high = self.model.filter_by_confidence(
+            high_confidence_data, threshold=0.85)
+        
+        # Should filter out low confidence items
+        self.assertEqual(len(filtered_low['extracted_data']), 0)
+        self.assertEqual(len(filtered_high['extracted_data']), 3)
+        
+    def test_error_handling(self):
+        """Test error handling for invalid inputs"""
+        # Test invalid data structure
+        with self.assertRaises(ValueError):
+            self.model.predict({'invalid': 'structure'})
+            
+        # Test missing data
+        with self.assertRaises(KeyError):
+            self.model.predict({'headers': [], 'data': []})
+```
+
+#### Data Processing Tests
+```python
+# tests/unit/processing/test_data_processor.py
+import unittest
+import pandas as pd
+import numpy as np
+from ai_excel_extractor.processing.data_processor import DataProcessor
+
+class TestDataProcessor(unittest.TestCase):
+    
+    def setUp(self):
+        self.processor = DataProcessor()
+        self.sample_excel_data = pd.DataFrame({
+            'Load Name': ['Motor 1', 'Motor 2', 'Lighting', 'HVAC'],
+            'Power (kW)': [15.5, 22.3, 5.2, 25.0],
+            'Voltage (V)': [480, 480, 120, 480],
+            'Current (A)': [18.6, 26.8, 43.3, 30.1],
+            'Power Factor': [0.85, 0.87, 0.95, 0.82]
+        })
+        
+    def test_data_validation(self):
+        """Test data validation"""
+        # Valid data should pass
+        is_valid = self.processor.validate_data(self.sample_excel_data)
+        self.assertTrue(is_valid)
+        
+        # Invalid data should fail
+        invalid_data = pd.DataFrame({
+            'Invalid Column': [1, 2, 3],
+            'Missing Data': [None, 5, 6]
+        })
+        is_invalid = self.processor.validate_data(invalid_data)
+        self.assertFalse(is_invalid)
+        
+    def test_data_cleaning(self):
+        """Test data cleaning functionality"""
+        dirty_data = pd.DataFrame({
+            'Load Name': ['Motor 1', 'Motor 2', '', 'HVAC'],
+            'Power (kW)': [15.5, 22.3, 999, 25.0],
+            'Voltage (V)': [480, 480, 120, 480],
+            'Current (A)': [18.6, 26.8, None, 30.1]
+        })
+        
+        cleaned_data = self.processor.clean_data(dirty_data)
+        
+        # Should remove empty rows
+        self.assertEqual(len(cleaned_data), 3)
+        
+        # Should handle missing values
+        self.assertFalse(cleaned_data['Current (A)'].isnull().any())
+        
+        # Should handle invalid values (e.g., 999 for power)
+        self.assertTrue(cleaned_data['Power (kW)'].max() < 100)
+        
+    def test_unit_conversion(self):
+        """Test unit conversion functionality"""
+        # Test power unit conversion
+        power_data = pd.DataFrame({
+            'Power': [1000, 2000, 3000],
+            'Unit': ['W', 'W', 'kW']
+        })
+        
+        converted = self.processor.convert_units(
+            power_data, 'Power', 'W', 'kW')
+        
+        expected = [1.0, 2.0, 3.0]
+        self.assertEqual(converted.tolist(), expected)
+        
+    def test_data_enrichment(self):
+        """Test data enrichment functionality"""
+        basic_data = pd.DataFrame({
+            'Load Name': ['Motor 1', 'Motor 2'],
+            'Power (kW)': [15.5, 22.3],
+            'Voltage (V)': [480, 480]
+        })
+        
+        enriched_data = self.processor.enrich_data(basic_data)
+        
+        # Should add calculated fields
+        self.assertIn('Current (A)', enriched_data.columns)
+        self.assertIn('Apparent Power (kVA)', enriched_data.columns)
+        self.assertIn('Reactive Power (kVAR)', enriched_data.columns)
+        
+        # Verify calculations
+        expected_current = 15.5 / 0.8 / 480 * 1000  # P / (PF * V) * 1000
+        self.assertAlmostEqual(
+            enriched_data['Current (A)'].iloc[0], 
+            expected_current, 
+            places=1
+        )
+```
+
+#### Database Tests
+```python
+# tests/unit/database/test_repository.py
+import unittest
+import tempfile
+import sqlite3
+from unittest.mock import Mock, patch
+from ai_excel_extractor.database.repository import ExtractionRepository
+
+class TestExtractionRepository(unittest.TestCase):
+    
+    def setUp(self):
+        """Set up in-memory database for testing"""
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
+        self.repository = ExtractionRepository(
+            f"sqlite:///{self.temp_db.name}"
+        )
+        
+    def tearDown(self):
+        """Clean up after tests"""
+        import os
+        os.unlink(self.temp_db.name)
+        
+    def test_create_extraction(self):
+        """Test creating new extraction record"""
+        extraction_data = {
+            'file_name': 'test.xlsx',
+            'file_size': 1024,
+            'status': 'completed',
+            'extracted_data': {'loads': []},
+            'confidence_scores': [0.95, 0.87]
+        }
+        
+        extraction_id = self.repository.create_extraction(extraction_data)
+        
+        # Should return valid ID
+        self.assertIsInstance(extraction_id, int)
+        self.assertGreater(extraction_id, 0)
+        
+    def test_get_extraction(self):
+        """Test retrieving extraction record"""
+        # Create test extraction
+        extraction_data = {
+            'file_name': 'test.xlsx',
+            'file_size': 1024,
+            'status': 'completed',
+            'extracted_data': {'loads': []},
+            'confidence_scores': [0.95]
+        }
+        
+        extraction_id = self.repository.create_extraction(extraction_data)
+        
+        # Retrieve it back
+        retrieved = self.repository.get_extraction(extraction_id)
+        
+        # Verify data
+        self.assertEqual(retrieved['file_name'], 'test.xlsx')
+        self.assertEqual(retrieved['status'], 'completed')
+        self.assertEqual(len(retrieved['confidence_scores']), 1)
+        
+    def test_update_extraction(self):
+        """Test updating extraction record"""
+        # Create extraction
+        extraction_data = {
+            'file_name': 'test.xlsx',
+            'status': 'processing'
+        }
+        
+        extraction_id = self.repository.create_extraction(extraction_data)
+        
+        # Update status
+        updated = self.repository.update_extraction(
+            extraction_id, 
+            {'status': 'completed', 'confidence_scores': [0.95]}
+        )
+        
+        # Verify update
+        self.assertTrue(updated)
+        
+        # Check updated data
+        retrieved = self.repository.get_extraction(extraction_id)
+        self.assertEqual(retrieved['status'], 'completed')
+        self.assertEqual(retrieved['confidence_scores'], [0.95])
+        
+    def test_delete_extraction(self):
+        """Test deleting extraction record"""
+        # Create extraction
+        extraction_data = {'file_name': 'test.xlsx'}
+        extraction_id = self.repository.create_extraction(extraction_data)
+        
+        # Delete it
+        deleted = self.repository.delete_extraction(extraction_id)
+        self.assertTrue(deleted)
+        
+        # Verify it's gone
+        retrieved = self.repository.get_extraction(extraction_id)
+        self.assertIsNone(retrieved)
+```
+
+#### API Tests
+```python
+# tests/unit/api/test_endpoints.py
+import unittest
+import json
+from unittest.mock import Mock, patch
+from flask.testing import FlaskClient
+from ai_excel_extractor.api.app import create_app
+from ai_excel_extractor.api.endpoints import extraction_bp
+
+class TestAPIEndpoints(unittest.TestCase):
+    
+    def setUp(self):
+        """Set up test client"""
+        self.app = create_app(testing=True)
+        self.app.config['TESTING'] = True
+        self.client = self.app.test_client()
+        
+    def test_health_endpoint(self):
+        """Test health check endpoint"""
+        response = self.client.get('/health')
+        
+        self.assertEqual(response.status_code, 200)
+        
+        data = json.loads(response.data)
+        self.assertEqual(data['status'], 'healthy')
+        self.assertIn('timestamp', data)
+        self.assertIn('version', data)
+        
+    def test_extract_endpoint_success(self):
+        """Test successful file extraction"""
+        # Mock file upload
+        with patch('ai_excel_extractor.api.endpoints.ai_extractor') as mock_extractor:
+            mock_extractor.extract.return_value = {
+                'status': 'success',
+                'data': {'loads': []},
+                'confidence': [0.95]
+            }
+            
+            # Simulate file upload
+            data = {
+                'file': (open('test_data/sample.xlsx', 'rb'), 'sample.xlsx')
+            }
+            
+            response = self.client.post(
+                '/api/v1/extract',
+                data=data,
+                content_type='multipart/form-data'
+            )
+            
+            self.assertEqual(response.status_code, 200)
+            
+            result = json.loads(response.data)
+            self.assertEqual(result['status'], 'success')
+            self.assertIn('extraction_id', result)
+            
+    def test_extract_endpoint_invalid_file(self):
+        """Test extraction with invalid file"""
+        response = self.client.post(
+            '/api/v1/extract',
+            data={'file': (open('invalid_file.txt', 'rb'), 'invalid.txt')},
+            content_type='multipart/form-data'
+        )
+        
+        self.assertEqual(response.status_code, 400)
+        
+    def test_get_extraction_status(self):
+        """Test getting extraction status"""
+        # Mock extraction retrieval
+        with patch('ai_excel_extractor.database.repository.ExtractionRepository.get_extraction') as mock_get:
+            mock_get.return_value = {
+                'id': 1,
+                'status': 'completed',
+                'extracted_data': {'loads': []}
+            }
+            
+            response = self.client.get('/api/v1/extractions/1')
+            
+            self.assertEqual(response.status_code, 200)
+            
+            result = json.loads(response.data)
+            self.assertEqual(result['status'], 'completed')
+            
+    def test_error_handling(self):
+        """Test error handling in API"""
+        # Test 404 for non-existent extraction
+        with patch('ai_excel_extractor.database.repository.ExtractionRepository.get_extraction') as mock_get:
+            mock_get.return_value = None
+            
+            response = self.client.get('/api/v1/extractions/999')
+            
+            self.assertEqual(response.status_code, 404)
+```
+
+## 🔗 Integration Testing
+
+### Workflow Integration Tests
+
+#### Full Processing Pipeline Test
+```python
+# tests/integration/workflow/test_full_pipeline.py
+import unittest
+import tempfile
+import pandas as pd
+from unittest.mock import patch
+from ai_excel_extractor.workflow.processor import WorkflowProcessor
+
+class TestFullWorkflowPipeline(unittest.TestCase):
+    
+    def setUp(self):
+        """Set up workflow processor with real components"""
+        self.processor = WorkflowProcessor()
+        
+        # Create test Excel file
+        self.test_file = tempfile.NamedTemporaryFile(
+            suffix='.xlsx', delete=False
+        )
+        
+        test_data = pd.DataFrame({
+            'Load Name': ['Motor 1', 'Lighting', 'HVAC'],
+            'Power (kW)': [15.5, 5.2, 25.0],
+            'Voltage (V)': [480, 120, 480],
+            'Current (A)': [18.6, 43.3, 30.1]
+        })
+        
+        test_data.to_excel(self.test_file.name, index=False)
+        
+    def test_full_extraction_workflow(self):
+        """Test complete extraction workflow"""
+        # Mock AI extraction to avoid actual model calls
+        with patch('ai_excel_extractor.workflow.processor.ai_extractor') as mock_extractor:
+            mock_extractor.extract.return_value = {
+                'status': 'success',
+                'extracted_data': {
+                    'loads': [
+                        {'name': 'Motor 1', 'power': 15.5, 'voltage': 480},
+                        {'name': 'Lighting', 'power': 5.2, 'voltage': 120},
+                        {'name': 'HVAC', 'power': 25.0, 'voltage': 480}
+                    ]
+                },
+                'confidence_scores': [0.95, 0.87, 0.92],
+                'metadata': {'processing_time': 2.3}
+            }
+            
+            # Run full workflow
+            result = self.processor.process_file(
+                self.test_file.name,
+                options={'validate': True, 'enrich': True}
+            )
+            
+            # Verify results
+            self.assertEqual(result['status'], 'completed')
+            self.assertIn('extraction_id', result)
+            self.assertEqual(len(result['data']['loads']), 3)
+            self.assertTrue(all(score >= 0.8 for score in result['confidence_scores']))
+            
+    def test_workflow_error_handling(self):
+        """Test error handling in workflow"""
+        # Test with non-existent file
+        with self.assertRaises(FileNotFoundError):
+            self.processor.process_file('nonexistent.xlsx')
+            
+        # Test with corrupted data
+        with patch('ai_excel_extractor.ai_models.neural_network.NeuralNetworkModel.predict') as mock_predict:
+            mock_predict.side_effect = Exception("Model error")
+            
+            result = self.processor.process_file(
+                self.test_file.name,
+                options={}
+            )
+            
+            self.assertEqual(result['status'], 'failed')
+            self.assertIn('error', result)
+```
+
+### Database Integration Tests
+
+#### Database-Application Integration
+```python
+# tests/integration/database/test_integration.py
+import unittest
+import tempfile
+from ai_excel_extractor.database.connection import DatabaseManager
+from ai_excel_extractor.workflow.processor import WorkflowProcessor
+
+class TestDatabaseIntegration(unittest.TestCase):
+    
+    def setUp(self):
+        """Set up temporary database for integration tests"""
+        self.temp_db = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+        
+        # Initialize database
+        self.db_manager = DatabaseManager(
+            f"sqlite:///{self.temp_db.name}"
+        )
+        self.db_manager.initialize_database()
+        
+        # Initialize processor
+        self.processor = WorkflowProcessor()
+        
+    def test_extraction_persistence(self):
+        """Test that extractions are properly persisted"""
+        extraction_data = {
+            'file_name': 'test.xlsx',
+            'status': 'completed',
+            'extracted_data': {'loads': []},
+            'confidence_scores': [0.95, 0.87]
+        }
+        
+        # Save extraction
+        extraction_id = self.db_manager.repository.create_extraction(extraction_data)
+        
+        # Retrieve it back
+        retrieved = self.db_manager.repository.get_extraction(extraction_id)
+        
+        # Verify data integrity
+        self.assertEqual(retrieved['file_name'], 'test.xlsx')
+        self.assertEqual(retrieved['status'], 'completed')
+        self.assertEqual(len(retrieved['confidence_scores']), 2)
+        
+    def test_workflow_database_integration(self):
+        """Test workflow with real database operations"""
+        with patch('ai_excel_extractor.ai_models.neural_network.NeuralNetworkModel.predict') as mock_predict:
+            mock_predict.return_value = {
+                'extracted_data': {'loads': [{'name': 'Test Load'}]},
+                'confidence_scores': [0.95]
+            }
+            
+            # Process file through workflow
+            result = self.processor.process_file(
+                'test_data/sample.xlsx',
+                db_manager=self.db_manager
+            )
+            
+            # Verify database persistence
+            self.assertIsNotNone(result['extraction_id'])
+            
+            # Retrieve from database
+            retrieved = self.db_manager.repository.get_extraction(
+                result['extraction_id']
+            )
+            
+            self.assertIsNotNone(retrieved)
+            self.assertEqual(retrieved['status'], 'completed')
+```
+
+## ⚡ Performance Testing
+
+### Load Testing
+
+#### API Load Testing
+```python
+# tests/performance/load/test_api_load.py
+import unittest
+import time
+import threading
+import requests
+from concurrent.futures import ThreadPoolExecutor
+from ai_excel_extractor.performance.load_tester import LoadTester
+
+class TestAPILoadPerformance(unittest.TestCase):
+    
+    def setUp(self):
+        self.base_url = "http://localhost:8080/api/v1"
+        self.load_tester = LoadTester()
+        
+    def test_concurrent_extractions(self):
+        """Test system under concurrent extraction loads"""
+        def extract_task(task_id):
+            """Single extraction task"""
+            start_time = time.time()
+            
+            try:
+                # Simulate file upload and extraction
+                response = requests.post(
+                    f"{self.base_url}/extract",
+                    files={'file': open('test_data/sample.xlsx', 'rb')},
+                    timeout=30
+                )
+                
+                end_time = time.time()
+                
+                return {
+                    'task_id': task_id,
+                    'status': 'success' if response.status_code == 200 else 'failed',
+                    'response_time': end_time - start_time,
+                    'status_code': response.status_code
+                }
+                
+            except Exception as e:
+                return {
+                    'task_id': task_id,
+                    'status': 'error',
+                    'error': str(e),
+                    'response_time': time.time() - start_time
+                }
+        
+        # Run 50 concurrent extraction requests
+        concurrent_requests = 50
+        thread_pool = ThreadPoolExecutor(max_workers=10)
+        
+        start_time = time.time()
+        
+        # Submit all tasks
+        futures = [
+            thread_pool.submit(extract_task, i) 
+            for i in range(concurrent_requests)
+        ]
+        
+        # Collect results
+        results = [future.result() for future in futures]
+        
+        total_time = time.time() - start_time
+        
+        # Analyze results
+        successful_requests = [r for r in results if r['status'] == 'success']
+        failed_requests = [r for r in results if r['status'] != 'success']
+        
+        success_rate = len(successful_requests) / concurrent_requests
+        
+        # Performance assertions
+        self.assertGreaterEqual(success_rate, 0.95, 
+                               f"Success rate {success_rate} below 95%")
+        
+        if successful_requests:
+            avg_response_time = sum(r['response_time'] for r in successful_requests) / len(successful_requests)
+            max_response_time = max(r['response_time'] for r in successful_requests)
+            
+            self.assertLessEqual(avg_response_time, 10.0, 
+                               f"Average response time {avg_response_time}s exceeds 10s")
+            self.assertLessEqual(max_response_time, 30.0, 
+                               f"Max response time {max_response_time}s exceeds 30s")
+        
+        print(f"Load test results:")
+        print(f"- Total requests: {concurrent_requests}")
+        print(f"- Success rate: {success_rate:.2%}")
+        print(f"- Total time: {total_time:.2f}s")
+        print(f"- Requests/second: {concurrent_requests/total_time:.2f}")
+        
+    def test_sustained_load(self):
+        """Test system under sustained load"""
+        # Run extraction requests for 5 minutes
+        duration = 300  # 5 minutes
+        request_interval = 2  # Every 2 seconds
+        
+        start_time = time.time()
+        request_count = 0
+        successful_requests = 0
+        failed_requests = 0
+        
+        while time.time() - start_time < duration:
+            request_count += 1
+            
+            try:
+                response = requests.post(
+                    f"{self.base_url}/extract",
+                    files={'file': open('test_data/sample.xlsx', 'rb')},
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    successful_requests += 1
+                else:
+                    failed_requests += 1
+                    
+            except Exception:
+                failed_requests += 1
+            
+            # Wait before next request
+            time.sleep(request_interval)
+        
+        total_time = time.time() - start_time
+        success_rate = successful_requests / request_count if request_count > 0 else 0
+        
+        print(f"Sustained load test results:")
+        print(f"- Duration: {total_time:.2f}s")
+        print(f"- Total requests: {request_count}")
+        print(f"- Success rate: {success_rate:.2%}")
+        print(f"- Average requests/second: {request_count/total_time:.2f}")
+        
+        # System should maintain high success rate under sustained load
+        self.assertGreaterEqual(success_rate, 0.90, 
+                               f"Success rate {success_rate} below 90% under sustained load")
+```
+
+#### Database Performance Testing
+```python
+# tests/performance/database/test_db_performance.py
+import unittest
+import time
+import random
+import string
+from concurrent.futures import ThreadPoolExecutor
+from ai_excel_extractor.database.repository import ExtractionRepository
+
+class TestDatabasePerformance(unittest.TestCase):
+    
+    def setUp(self):
+        """Set up test database"""
+        # Use in-memory SQLite for performance testing
+        self.repository = ExtractionRepository("sqlite:///:memory:")
+        self.repository.initialize_database()
+        
+    def test_concurrent_writes(self):
+        """Test concurrent database writes"""
+        def write_extraction(insertion_id):
+            """Write a single extraction"""
+            start_time = time.time()
+            
+            extraction_data = {
+                'file_name': f'load_test_{insertion_id}.xlsx',
+                'file_size': random.randint(1024, 10240),
+                'status': 'completed',
+                'extracted_data': {
+                    'loads': [
+                        {
+                            'name': f'Load_{random.randint(1, 100)}',
+                            'power': random.uniform(1.0, 50.0)
+                        }
+                    ]
+                },
+                'confidence_scores': [random.uniform(0.8, 1.0)]
+            }
+            
+            try:
+                extraction_id = self.repository.create_extraction(extraction_data)
+                end_time = time.time()
+                
+                return {
+                    'insertion_id': insertion_id,
+                    'extraction_id': extraction_id,
+                    'success': True,
+                    'duration': end_time - start_time
+                }
+                
+            except Exception as e:
+                return {
+                    'insertion_id': insertion_id,
+                    'success': False,
+                    'error': str(e),
+                    'duration': time.time() - start_time
+                }
+        
+        # Test with 100 concurrent writes
+        concurrent_writes = 100
+        thread_pool = ThreadPoolExecutor(max_workers=20)
+        
+        start_time = time.time()
+        
+        # Execute concurrent writes
+        futures = [
+            thread_pool.submit(write_extraction, i) 
+            for i in range(concurrent_writes)
+        ]
+        
+        results = [future.result() for future in futures]
+        
+        total_time = time.time() - start_time
+        
+        # Analyze results
+        successful_writes = [r for r in results if r['success']]
+        failed_writes = [r for r in results if not r['success']]
+        
+        success_rate = len(successful_writes) / concurrent_writes
+        
+        self.assertGreaterEqual(success_rate, 0.99, 
+                               f"Write success rate {success_rate} below 99%")
+        
+        if successful_writes:
+            avg_duration = sum(r['duration'] for r in successful_writes) / len(successful_writes)
+            
+            # Individual writes should be fast
+            self.assertLessEqual(avg_duration, 0.1, 
+                               f"Average write duration {avg_duration}s exceeds 100ms")
+        
+        print(f"Database write performance:")
+        print(f"- Concurrent writes: {concurrent_writes}")
+        print(f"- Success rate: {success_rate:.2%}")
+        print(f"- Total time: {total_time:.2f}s")
+        print(f"- Writes/second: {concurrent_writes/total_time:.2f}")
+        
+    def test_query_performance(self):
+        """Test database query performance"""
+        # Insert test data
+        test_extractions = []
+        for i in range(1000):
+            extraction_data = {
+                'file_name': f'query_test_{i}.xlsx',
+                'status': random.choice(['pending', 'processing', 'completed', 'failed']),
+                'extracted_data': {'loads': []},
+                'confidence_scores': [random.uniform(0.8, 1.0)]
+            }
+            
+            extraction_id = self.repository.create_extraction(extraction_data)
+            test_extractions.append(extraction_id)
+        
+        # Test query performance
+        query_times = []
+        
+        # Test 1: Simple retrieval by ID
+        start_time = time.time()
+        for extraction_id in test_extractions[:100]:  # Test 100 retrievals
+            extraction = self.repository.get_extraction(extraction_id)
+            self.assertIsNotNone(extraction)
+        retrieval_time = time.time() - start_time
+        query_times.append(('ID retrieval', retrieval_time))
+        
+        # Test 2: Status-based queries
+        start_time = time.time()
+        completed_extractions = self.repository.get_extractions_by_status('completed')
+        status_query_time = time.time() - start_time
+        query_times.append(('Status query', status_query_time))
+        
+        # Test 3: Date range queries
+        start_time = time.time()
+        recent_extractions = self.repository.get_extractions_by_date_range(
+            '2023-01-01', '2023-12-31'
+        )
+        date_query_time = time.time() - start_time
+        query_times.append(('Date range query', date_query_time))
+        
+        # Analyze performance
+        for query_name, query_time in query_times:
+            queries_per_second = 100 / query_time if query_time > 0 else float('inf')
+            print(f"{query_name}: {query_time:.3f}s ({queries_per_second:.1f} queries/sec)")
+            
+            # Performance assertions
+            if query_name == 'ID retrieval':
+                self.assertLessEqual(query_time, 0.5, 
+                                   f"ID retrieval took {query_time}s, should be under 0.5s")
+            else:
+                self.assertLessEqual(query_time, 2.0, 
+                                   f"{query_name} took {query_time}s, should be under 2s")
+```
+
+### Stress Testing
+
+#### Memory Stress Test
+```python
+# tests/performance/stress/test_memory_stress.py
+import unittest
+import time
+import psutil
+import gc
+from ai_excel_extractor.stress.memory_stress_tester import MemoryStressTester
+
+class TestMemoryStress(unittest.TestCase):
+    
+    def setUp(self):
+        self.stress_tester = MemoryStressTester()
+        
+    def test_large_file_processing(self):
+        """Test processing very large Excel files"""
+        initial_memory = psutil.virtual_memory().used
+        
+        # Create large test file
+        large_file = self.stress_tester.create_large_excel_file(
+            rows=100000, 
+            cols=20,
+            file_path='test_large.xlsx'
+        )
+        
+        try:
+            # Process the large file
+            start_time = time.time()
+            result = self.stress_tester.process_file(large_file)
+            processing_time = time.time() - start_time
+            
+            # Check memory usage
+            peak_memory = self.stress_tester.get_peak_memory_usage()
+            memory_increase = peak_memory - initial_memory
+            
+            # Verify processing completed successfully
+            self.assertEqual(result['status'], 'completed')
+            
+            # Memory usage should be reasonable (less than 2GB increase)
+            self.assertLess(memory_increase, 2 * 1024 * 1024 * 1024)
+            
+            print(f"Large file processing:")
+            print(f"- File size: {large_file}")
+            print(f"- Processing time: {processing_time:.2f}s")
+            print(f"- Memory increase: {memory_increase / 1024 / 1024:.2f}MB")
+            print(f"- Peak memory: {peak_memory / 1024 / 1024:.2f}MB")
+            
+        finally:
+            # Clean up
+            self.stress_tester.cleanup_file(large_file)
+            gc.collect()  # Force garbage collection
+            
+    def test_memory_leak_detection(self):
+        """Test for memory leaks during repeated processing"""
+        process = psutil.Process()
+        initial_memory = process.memory_info().rss
+        
+        # Process many small files
+        memory_measurements = []
+        
+        for i in range(100):
+            # Create small test file
+            test_file = self.stress_tester.create_test_excel_file(
+                rows=100, 
+                file_path=f'test_{i}.xlsx'
+            )
+            
+            try:
+                # Process file
+                result = self.stress_tester.process_file(test_file)
+                
+                # Measure memory
+                current_memory = process.memory_info().rss
+                memory_measurements.append(current_memory)
+                
+                # Verify processing worked
+                self.assertEqual(result['status'], 'completed')
+                
+            finally:
+                # Clean up
+                self.stress_tester.cleanup_file(test_file)
+                
+            # Force garbage collection between iterations
+            if i % 10 == 0:
+                gc.collect()
+        
+        # Analyze memory trend
+        final_memory = memory_measurements[-1]
+        memory_growth = final_memory - initial_memory
+        
+        # Memory growth should be minimal (less than 50MB for 100 files)
+        self.assertLess(memory_growth, 50 * 1024 * 1024)
+        
+        # Check if memory is stabilizing (not continuously growing)
+        self.stress_tester.verify_memory_stabilization(memory_measurements)
+        
+        print(f"Memory leak detection:")
+        print(f"- Initial memory: {initial_memory / 1024 / 1024:.2f}MB")
+        print(f"- Final memory: {final_memory / 1024 / 1024:.2f}MB")
+        print(f"- Memory growth: {memory_growth / 1024 / 1024:.2f}MB")
+```
+
+## 🔒 Security Testing
+
+### Authentication and Authorization Tests
+
+#### JWT Security Testing
+```python
+# tests/security/authentication/test_jwt_security.py
+import unittest
+import jwt
+import time
+from ai_excel_extractor.security.jwt_manager import JWTManager
+
+class TestJWTSecurity(unittest.TestCase):
+    
+    def setUp(self):
+        self.jwt_manager = JWTManager()
+        
+    def test_token_expiration(self):
+        """Test JWT token expiration"""
+        # Create token with short expiration
+        token = self.jwt_manager.create_token(
+            user_id=1, 
+            role='engineer', 
+            expires_in=1  # 1 second
+        )
+        
+        # Token should be valid immediately
+        payload = self.jwt_manager.validate_token(token)
+        self.assertIsNotNone(payload)
+        
+        # Wait for expiration
+        time.sleep(2)
+        
+        # Token should now be expired
+        expired_payload = self.jwt_manager.validate_token(token)
+        self.assertIsNone(expired_payload)
+        
+    def test_invalid_token_handling(self):
+        """Test handling of invalid tokens"""
+        # Test with completely invalid token
+        invalid_result = self.jwt_manager.validate_token("invalid.token.here")
+        self.assertIsNone(invalid_result)
+        
+        # Test with tampered token
+        valid_token = self.jwt_manager.create_token(user_id=1, role='engineer')
+        tampered_token = valid_token[:-10] + "tampered123"
+        
+        tampered_result = self.jwt_manager.validate_token(tampered_token)
+        self.assertIsNone(tampered_result)
+        
+    def test_token_claims_validation(self):
+        """Test token claims validation"""
+        # Create token with specific claims
+        token = self.jwt_manager.create_token(
+            user_id=1, 
+            role='engineer',
+            permissions=['read', 'write']
+        )
+        
+        payload = self.jwt_manager.validate_token(token)
+        
+        # Verify all claims are present and correct
+        self.assertEqual(payload['user_id'], 1)
+        self.assertEqual(payload['role'], 'engineer')
+        self.assertEqual(payload['permissions'], ['read', 'write'])
+        self.assertIn('exp', payload)
+        self.assertIn('iat', payload)
+        self.assertIn('jti', payload)  # JWT ID
+        
+    def test_token_blacklisting(self):
+        """Test token blacklisting functionality"""
+        # Create token
+        token = self.jwt_manager.create_token(user_id=1, role='engineer')
+        
+        # Validate token initially
+        self.assertIsNotNone(self.jwt_manager.validate_token(token))
+        
+        # Blacklist the token
+        self.jwt_manager.blacklist_token(token)
+        
+        # Token should now be invalid
+        self.assertIsNone(self.jwt_manager.validate_token(token))
+```
+
+#### API Security Testing
+```python
+# tests/security/api/test_api_security.py
+import unittest
+import requests
+import json
+from ai_excel_extractor.security.api_tester import APISecurityTester
+
+class TestAPISecurity(unittest.TestCase):
+    
+    def setUp(self):
+        self.base_url = "http://localhost:8080/api/v1"
+        self.security_tester = APISecurityTester()
+        
+    def test_unauthorized_access(self):
+        """Test that unauthorized access is properly blocked"""
+        # Try to access protected endpoint without token
+        response = requests.get(f"{self.base_url}/extractions/1")
+        self.assertEqual(response.status_code, 401)
+        
+    def test_invalid_token_access(self):
+        """Test that invalid tokens are rejected"""
+        headers = {'Authorization': 'Bearer invalid_token_123'}
+        response = requests.get(f"{self.base_url}/extractions/1", headers=headers)
+        self.assertEqual(response.status_code, 401)
+        
+    def test_sql_injection_protection(self):
+        """Test SQL injection attack protection"""
+        malicious_payloads = [
+            "1'; DROP TABLE extractions; --",
+            "1' OR '1'='1",
+            "1 UNION SELECT * FROM users",
+            "'; INSERT INTO users (admin) VALUES (1); --"
+        ]
+        
+        for payload in malicious_payloads:
+            # Try to access extraction with malicious ID
+            headers = {'Authorization': 'Bearer valid_token_placeholder'}
+            response = requests.get(
+                f"{self.base_url}/extractions/{payload}", 
+                headers=headers
+            )
+            
+            # Should return 404, not 500 or execute the injection
+            self.assertEqual(response.status_code, 404)
+            
+    def test_file_upload_security(self):
+        """Test file upload security measures"""
+        # Test malicious file types
+        malicious_files = [
+            ('malware.exe', b'MZ\x90\x00'),  # PE executable
+            ('script.js', b'<script>alert("xss")</script>'),
+            ('payload.py', b'import os; os.system("rm -rf /")')
+        ]
+        
+        for filename, content in malicious_files:
+            files = {'file': (filename, content)}
+            headers = {'Authorization': 'Bearer valid_token_placeholder'}
+            
+            response = requests.post(
+                f"{self.base_url}/extract", 
+                files=files, 
+                headers=headers
+            )
+            
+            # Should reject malicious files
+            self.assertEqual(response.status_code, 400)
+            
+    def test_rate_limiting(self):
+        """Test API rate limiting"""
+        # Make many requests quickly
+        requests_made = 0
+        blocked_requests = 0
+        
+        for i in range(100):
+            try:
+                response = requests.post(
+                    f"{self.base_url}/extract",
+                    files={'file': open('test_data/sample.xlsx', 'rb')},
+                    timeout=1
+                )
+                requests_made += 1
+                
+                if response.status_code == 429:  # Too Many Requests
+                    blocked_requests += 1
+                    
+            except requests.exceptions.Timeout:
+                blocked_requests += 1
+                
+        # Should have rate-limited some requests
+        rate_limiting_ratio = blocked_requests / 100
+        self.assertGreater(rate_limiting_ratio, 0.1, 
+                          "Rate limiting should block at least 10% of rapid requests")
+```
+
+### Data Protection Testing
+
+#### Data Encryption Testing
+```python
+# tests/security/data/test_encryption.py
+import unittest
+import os
+from ai_excel_extractor.security.encryption import DataEncryptor
+
+class TestDataEncryption(unittest.TestCase):
+    
+    def setUp(self):
+        self.encryptor = DataEncryptor()
+        
+    def test_data_encryption_decryption(self):
+        """Test data encryption and decryption"""
+        original_data = "sensitive electrical load data"
+        
+        # Encrypt data
+        encrypted_data = self.encryptor.encrypt(original_data)
+        
+        # Encrypted data should be different from original
+        self.assertNotEqual(encrypted_data, original_data)
+        
+        # Decrypt data
+        decrypted_data = self.encryptor.decrypt(encrypted_data)
+        
+        # Decrypted data should match original
+        self.assertEqual(decrypted_data, original_data)
+        
+    def test_encryption_key_rotation(self):
+        """Test encryption key rotation"""
+        original_data = "test data for rotation"
+        
+        # Encrypt with original key
+        encrypted_v1 = self.encryptor.encrypt(original_data, key_version=1)
+        
+        # Rotate to new key
+        self.encryptor.rotate_key()
+        
+        # Decrypt with new key should fail for old encrypted data
+        with self.assertRaises(Exception):
+            self.encryptor.decrypt(encrypted_v1, key_version=2)
+            
+        # Re-encrypt with new key
+        encrypted_v2 = self.encryptor.encrypt(original_data, key_version=2)
+        decrypted_v2 = self.encryptor.decrypt(encrypted_v2, key_version=2)
+        
+        self.assertEqual(decrypted_v2, original_data)
+        
+    def test_sensitive_data_detection(self):
+        """Test detection of sensitive data patterns"""
+        sensitive_patterns = [
+            "password: secret123",
+            "api_key: sk-1234567890abcdef",
+            "credit_card: 1234-5678-9012-3456",
+            "ssn: 123-45-6789"
+        ]
+        
+        for pattern in sensitive_patterns:
+            is_sensitive = self.encryptor.is_sensitive_data(pattern)
+            self.assertTrue(is_sensitive, f"Should detect sensitive data: {pattern}")
+```
+
+## ✅ Acceptance Testing
+
+### Business Requirements Testing
+
+#### Load Calculation Accuracy
+```python
+# tests/acceptance/business/test_load_calculations.py
+import unittest
+import pandas as pd
+from ai_excel_extractor.acceptance.business_tester import BusinessRequirementTester
+
+class TestLoadCalculationAccuracy(unittest.TestCase):
+    
+    def setUp(self):
+        self.business_tester = BusinessRequirementTester()
+        
+    def test_electrical_load_calculations(self):
+        """Test accurate electrical load calculations"""
+        # Create test data with known values
+        test_data = pd.DataFrame({
+            'Load Name': ['Motor1', 'Lighting', 'HVAC'],
+            'Power (kW)': [15.5, 5.2, 25.0],
+            'Voltage (V)': [480, 120, 480],
+            'Power Factor': [0.85, 0.95, 0.82]
+        })
+        
+        # Process through system
+        result = self.business_tester.calculate_electrical_loads(test_data)
+        
+        # Verify calculations
+        # Motor1: I = P / (√3 × V × PF) = 15.5 / (1.732 × 480 × 0.85) = 22.1A
+        motor1_current = result[result['Load Name'] == 'Motor1']['Current (A)'].iloc[0]
+        self.assertAlmostEqual(motor1_current, 22.1, places=1)
+        
+        # Total load calculation
+        total_power = result['Power (kW)'].sum()
+        self.assertEqual(total_power, 45.7)  # 15.5 + 5.2 + 25.0
+        
+    def test_cable_sizing_calculations(self):
+        """Test cable sizing according to standards"""
+        # Test data for cable sizing
+        test_loads = pd.DataFrame({
+            'Load Name': ['Main Motor'],
+            'Current (A)': [45.0],
+            'Conductor Material': ['Copper'],
+            'Insulation': ['THHN'],
+            'Ambient Temperature': [30],  # Celsius
+            'Conduit Fill': ['3_conductors']
+        })
+        
+        # Calculate cable sizes
+        cable_sizes = self.business_tester.calculate_cable_sizes(test_loads)
+        
+        # Verify cable size recommendation (should be 6 AWG for 45A with derating)
+        recommended_size = cable_sizes['Recommended Size'].iloc[0]
+        self.assertEqual(recommended_size, '6 AWG')
+        
+    def test_panel_load_summary(self):
+        """Test panel load summary generation"""
+        # Create diverse load mix
+        mixed_loads = pd.DataFrame({
+            'Load Name': [f'Load_{i}' for i in range(10)],
+            'Power (kW)': [1.5 + i * 0.5 for i in range(10)],
+            'Load Type': ['Motor'] * 5 + ['Lighting'] * 3 + ['HVAC'] * 2],
+            'Duty': ['Continuous'] * 7 + ['Intermittent'] * 3
+        })
+        
+        # Generate panel summary
+        summary = self.business_tester.generate_panel_summary(mixed_loads)
+        
+        # Verify summary elements
+        self.assertIn('total_connected_load', summary)
+        self.assertIn('demand_factor', summary)
+        self.assertIn('total_demand_load', summary)
+        self.assertIn('diversity_factor', summary)
+        self.assertIn('load_by_type', summary)
+        
+        # Check load type breakdown
+        self.assertEqual(summary['load_by_type']['Motor'], 5)
+        self.assertEqual(summary['load_by_type']['Lighting'], 3)
+        self.assertEqual(summary['load_by_type']['HVAC'], 2)
+```
+
+### User Experience Testing
+
+#### Workflow Usability Tests
+```python
+# tests/acceptance/usability/test_workflow_usability.py
+import unittest
+import tempfile
+import pandas as pd
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+class TestWorkflowUsability(unittest.TestCase):
+    
+    def setUp(self):
+        """Set up Selenium WebDriver for UI testing"""
+        self.driver = webdriver.Chrome()  # or Firefox, Safari, etc.
+        self.driver.get("http://localhost:8080")
+        
+    def tearDown(self):
+        """Clean up WebDriver"""
+        self.driver.quit()
+        
+    def test_file_upload_workflow(self):
+        """Test the complete file upload workflow"""
+        wait = WebDriverWait(self.driver, 10)
+        
+        # Navigate to upload page
+        upload_link = wait.until(
+            EC.element_to_be_clickable((By.LINK_TEXT, "Upload File"))
+        )
+        upload_link.click()
+        
+        # Verify upload page loaded
+        upload_title = wait.until(
+            EC.presence_of_element_located((By.TAG_NAME, "h1"))
+        )
+        self.assertEqual(upload_title.text, "Upload Excel File")
+        
+        # Create test Excel file
+        test_data = pd.DataFrame({
+            'Load Name': ['Test Motor'],
+            'Power (kW)': [10.0],
+            'Voltage (V)': [480]
+        })
+        
+        temp_file = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+        test_data.to_excel(temp_file.name, index=False)
+        
+        try:
+            # Upload file
+            file_input = self.driver.find_element(By.ID, "file-upload")
+            file_input.send_keys(temp_file.name)
+            
+            # Click upload button
+            upload_button = self.driver.find_element(By.ID, "upload-button")
+            upload_button.click()
+            
+            # Wait for processing to complete
+            result_title = wait.until(
+                EC.presence_of_element_located((By.CLASS_NAME, "result-title"))
+            )
+            self.assertEqual(result_title.text, "Extraction Complete")
+            
+            # Verify results are displayed
+            extracted_data = self.driver.find_element(By.CLASS_NAME, "extracted-data")
+            self.assertIsNotNone(extracted_data)
+            
+            # Check confidence score is displayed
+            confidence_element = self.driver.find_element(By.CLASS_NAME, "confidence-score")
+            confidence_value = float(confidence_element.text.replace('%', ''))
+            self.assertGreater(confidence_value, 80)
+            
+        finally:
+            # Clean up temp file
+            os.unlink(temp_file.name)
+            
+    def test_results_review_workflow(self):
+        """Test the results review and correction workflow"""
+        # Start with an extraction result page (simulate)
+        self.driver.get("http://localhost:8080/results/1")
+        
+        wait = WebDriverWait(self.driver, 10)
+        
+        # Verify results are displayed
+        results_table = wait.until(
+            EC.presence_of_element_located((By.CLASS_NAME, "results-table"))
+        )
+        self.assertIsNotNone(results_table)
+        
+        # Test editing a row
+        edit_button = self.driver.find_element(By.CLASS_NAME, "edit-row-button")
+        edit_button.click()
+        
+        # Verify edit form appears
+        edit_form = wait.until(
+            EC.presence_of_element_located((By.CLASS_NAME, "edit-form"))
+        )
+        self.assertIsNotNone(edit_form)
+        
+        # Make a change
+        power_input = self.driver.find_element(By.NAME, "power")
+        power_input.clear()
+        power_input.send_keys("12.5")
+        
+        # Save changes
+        save_button = self.driver.find_element(By.CLASS_NAME, "save-button")
+        save_button.click()
+        
+        # Verify change was applied
+        success_message = wait.until(
+            EC.presence_of_element_located((By.CLASS_NAME, "success-message"))
+        )
+        self.assertIn("Changes saved", success_message.text)
+        
+    def test_export_functionality(self):
+        """Test export functionality"""
+        # Navigate to results page
+        self.driver.get("http://localhost:8080/results/1")
+        
+        wait = WebDriverWait(self.driver, 10)
+        
+        # Click export button
+        export_button = wait.until(
+            EC.element_to_be_clickable((By.CLASS_NAME, "export-button"))
+        )
+        export_button.click()
+        
+        # Select export format
+        json_option = wait.until(
+            EC.element_to_be_clickable((By.CLASS_NAME, "export-json"))
+        )
+        json_option.click()
+        
+        # Verify download starts (check for download notification)
+        download_notification = wait.until(
+            EC.presence_of_element_located((By.CLASS_NAME, "download-notification"))
+        )
+        self.assertIn("Download started", download_notification.text)
+```
+
+## 📊 Test Reporting
+
+### Test Results Analysis
+
+#### Automated Test Reporting
+```python
+# tests/reporting/test_reporter.py
+import unittest
+import json
+import time
+from datetime import datetime
+from ai_excel_extractor.testing.reporter import TestReporter
+
+class TestReporter(unittest.TestCase):
+    
+    def setUp(self):
+        self.reporter = TestReporter()
+        
+    def test_generate_test_report(self):
+        """Test automated test report generation"""
+        # Run a sample test suite
+        test_suite = unittest.TestLoader().loadTestsFromTestCase(TestNeuralNetworkModel)
+        test_runner = unittest.TextTestRunner(verbosity=0, stream=open('/dev/null', 'w'))
+        result = test_runner.run(test_suite)
+        
+        # Generate report
+        report = self.reporter.generate_report(
+            test_result=result,
+            execution_time=time.time(),
+            environment_info={'python_version': '3.9.7'}
+        )
+        
+        # Verify report structure
+        self.assertIn('summary', report)
+        self.assertIn('test_count', report['summary'])
+        self.assertIn('pass_count', report['summary'])
+        self.assertIn('fail_count', report['summary'])
+        self.assertIn('execution_time', report['summary'])
+        
+        # Verify metrics
+        self.assertEqual(
+            report['summary']['test_count'],
+            report['summary']['pass_count'] + report['summary']['fail_count']
+        )
+        
+        self.assertGreater(report['summary']['execution_time'], 0)
+        
+    def test_performance_regression_detection(self):
+        """Test detection of performance regressions"""
+        # Simulate performance metrics
+        current_metrics = {
+            'api_response_time': 2.5,
+            'database_query_time': 0.15,
+            'memory_usage': 512.0,
+            'cpu_usage': 45.0
+        }
+        
+        baseline_metrics = {
+            'api_response_time': 2.0,
+            'database_query_time': 0.10,
+            'memory_usage': 450.0,
+            'cpu_usage': 35.0
+        }
+        
+        # Detect regressions
+        regressions = self.reporter.detect_regressions(
+            current_metrics, baseline_metrics
+        )
+        
+        # Should detect API response time regression (2.5 > 2.0 * 1.1)
+        self.assertIn('api_response_time', regressions)
+        self.assertGreater(regressions['api_response_time']['regression'], 0)
+        
+    def test_coverage_reporting(self):
+        """Test code coverage reporting"""
+        # Simulate coverage data
+        coverage_data = {
+            'total_lines': 1000,
+            'covered_lines': 850,
+            'line_rate': 0.85,
+            'functions': 50,
+            'covered_functions': 42,
+            'function_rate': 0.84
+        }
+        
+        # Generate coverage report
+        coverage_report = self.reporter.generate_coverage_report(coverage_data)
+        
+        # Verify coverage metrics
+        self.assertEqual(coverage_report['overall_coverage'], 0.85)
+        self.assertEqual(coverage_report['function_coverage'], 0.84)
+        self.assertGreaterEqual(coverage_report['overall_coverage'], 0.80, 
+                               "Overall coverage should be at least 80%")
+```
+
+### Continuous Integration Testing
+
+#### CI/CD Pipeline Configuration
+```yaml
+# .github/workflows/test.yml
+name: Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9, "3.10"]
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+    
+    - name: Run unit tests
+      run: |
+        python -m pytest tests/unit/ -v --cov=ai_excel_extractor --cov-report=xml
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.9
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+    
+    - name: Run integration tests
+      run: |
+        python -m pytest tests/integration/ -v
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+
+  performance-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.9
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+    
+    - name: Run performance tests
+      run: |
+        python -m pytest tests/performance/ -v --benchmark-only
+      env:
+        PERFORMANCE_MODE: "ci"
+    
+    - name: Upload performance results
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-results
+        path: benchmark-results/
+
+  security-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.9
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety
+    
+    - name: Run security tests
+      run: |
+        # Run Bandit security linter
+        bandit -r ai_excel_extractor/ -f json -o bandit-report.json
+        
+        # Run safety check for dependencies
+        safety check --json --output safety-report.json
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+```
+
+## 🎯 Best Practices
+
+### Test Development Guidelines
+
+#### Writing Effective Tests
+```python
+# Best practices for test writing
+
+class TestLoadCalculation(unittest.TestCase):
+    """
+    Example of well-structured test class
+    """
+    
+    def setUp(self):
+        """Set up test fixtures - run before each test method"""
+        self.calculator = LoadCalculator()
+        self.sample_data = self.create_sample_data()
+        
+    def create_sample_data(self):
+        """Helper method to create test data"""
+        return pd.DataFrame({
+            'Load Name': ['Test Load'],
+            'Power (kW)': [10.0],
+            'Voltage (V)': [480]
+        })
+    
+    def test_calculation_accuracy(self):
+        """Test specific calculation accuracy"""
+        # Arrange
+        expected_current = 12.5
+        
+        # Act
+        result = self.calculator.calculate_current(
+            power_kw=10.0,
+            voltage=480,
+            power_factor=0.85
+        )
+        
+        # Assert
+        self.assertAlmostEqual(result, expected_current, places=1)
+    
+    def test_edge_case_zero_power(self):
+        """Test edge case handling"""
+        # Test with zero power input
+        result = self.calculator.calculate_current(
+            power_kw=0,
+            voltage=480,
+            power_factor=0.85
+        )
+        
+        self.assertEqual(result, 0)
+    
+    def test_error_handling_invalid_voltage(self):
+        """Test error handling for invalid inputs"""
+        # Should raise ValueError for invalid voltage
+        with self.assertRaises(ValueError):
+            self.calculator.calculate_current(
+                power_kw=10.0,
+                voltage=0,  # Invalid voltage
+                power_factor=0.85
+            )
+    
+    def tearDown(self):
+        """Clean up after each test method"""
+        # Clean up test fixtures
+        pass
+```
+
+#### Test Data Management
+```python
+# tests/fixtures/test_data_factory.py
+import pandas as pd
+import random
+from faker import Faker
+
+class TestDataFactory:
+    """Factory for creating test data"""
+    
+    def __init__(self):
+        self.fake = Faker()
+        
+    def create_load_list(self, num_loads=10, include_variations=True):
+        """Create a realistic load list"""
+        load_types = ['Motor', 'Lighting', 'HVAC', 'Pump', 'Compressor']
+        voltages = [120, 208, 240, 480, 600]
+        power_factors = [0.8, 0.85, 0.87, 0.9, 0.92, 0.95]
+        
+        loads = []
+        for i in range(num_loads):
+            load = {
+                'Load Name': f"{random.choice(load_types)} {i+1:02d}",
+                'Load Type': random.choice(load_types),
+                'Power (kW)': round(random.uniform(0.5, 50.0), 1),
+                'Voltage (V)': random.choice(voltages),
+                'Power Factor': random.choice(power_factors),
+                'Quantity': random.randint(1, 5)
+            }
+            
+            # Calculate current
+            if load['Voltage (V)'] > 0:
+                load['Current (A)'] = round(
+                    (load['Power (kW)'] * 1000) / 
+                    (1.732 * load['Voltage (V)'] * load['Power Factor']),
+                    1
+                )
+            
+            loads.append(load)
+        
+        return pd.DataFrame(loads)
+    
+    def create_cable_schedule(self, num_cables=20):
+        """Create a cable schedule"""
+        cables = []
+        for i in range(num_cables):
+            cable = {
+                'Cable ID': f"C{i+1:03d}",
+                'From': f"Panel {random.choice(['A', 'B', 'C'])}",
+                'To': f"Load {i+1:02d}",
+                'Conductor Size': random.choice(['12 AWG', '10 AWG', '8 AWG', '6 AWG', '4 AWG', '2 AWG']),
+                'Length (ft)': random.randint(50, 500),
+                'Installation Method': random.choice(['Conduit', 'Cable Tray', 'Underground'])
+            }
+            cables.append(cable)
+        
+        return pd.DataFrame(cables)
+    
+    def create_panel_schedule(self, num_circuits=30):
+        """Create a panel schedule"""
+        circuits = []
+        for i in range(num_circuits):
+            circuit = {
+                'Circuit Number': i+1,
+                'Description': f"Circuit {i+1:02d}",
+                'Load (A)': round(random.uniform(5, 100), 1),
+                'Breaker Size (A)': random.choice([15, 20, 30, 40, 50, 60, 80, 100]),
+                'Poles': random.choice([1, 2, 3]),
+                'Phase': random.choice(['A', 'B', 'C']),
+                'Load Type': random.choice(['Continuous', 'Non-continuous'])
+            }
+            circuits.append(circuit)
+        
+        return pd.DataFrame(circuits)
+```
+
+### Test Environment Management
+
+#### Test Database Setup
+```python
+# tests/environment/test_db_manager.py
+import tempfile
+import sqlite3
+from sqlalchemy import create_engine
+from ai_excel_extractor.database.manager import DatabaseManager
+
+class TestDatabaseManager:
+    """Manager for test database setup and teardown"""
+    
+    def __init__(self):
+        self.temp_db_path = None
+        self.engine = None
+        
+    def setup_test_database(self):
+        """Create isolated test database"""
+        # Create temporary database file
+        self.temp_db_path = tempfile.NamedTemporaryFile(
+            suffix='.db', 
+            delete=False
+        ).name
+        
+        # Create database connection
+        self.engine = create_engine(f"sqlite:///{self.temp_db_path}")
+        
+        # Initialize schema
+        from ai_excel_extractor.database.schema import create_schema
+        create_schema(self.engine)
+        
+        return self.engine
+    
+    def teardown_test_database(self):
+        """Clean up test database"""
+        if self.engine:
+            self.engine.dispose()
+            
+        if self.temp_db_path:
+            import os
+            os.unlink(self.temp_db_path)
+            
+    def get_test_connection(self):
+        """Get database connection for tests"""
+        if not self.engine:
+            self.setup_test_database()
+        return self.engine.connect()
+```
+
+## 📋 Testing Checklist
+
+### Pre-Release Testing Checklist
+
+#### Functional Testing
+- [ ] All unit tests pass
+- [ ] Integration tests pass
+- [ ] End-to-end workflow tests pass
+- [ ] User acceptance tests pass
+- [ ] Error handling tested
+- [ ] Edge cases covered
+
+#### Performance Testing
+- [ ] Load tests completed
+- [ ] Stress tests completed
+- [ ] Performance benchmarks met
+- [ ] Memory usage within limits
+- [ ] Database performance acceptable
+
+#### Security Testing
+- [ ] Authentication tests pass
+- [ ] Authorization tests pass
+- [ ] Data encryption verified
+- [ ] SQL injection protection tested
+- [ ] Input validation tested
+- [ ] API security verified
+
+#### Compatibility Testing
+- [ ] Python versions supported
+- [ ] Database versions supported
+- [ ] Operating systems supported
+- [ ] Browser compatibility tested
+- [ ] File format compatibility
+
+#### Deployment Testing
+- [ ] Installation procedures tested
+- [ ] Configuration validation tested
+- [ ] Migration scripts tested
+- [ ] Backup and restore tested
+- [ ] Monitoring and alerting tested
+
+### Automated Testing Best Practices
+
+#### Continuous Integration
+- [ ] All tests run on every commit
+- [ ] Test results reported automatically
+- [ ] Code coverage tracked
+- [ ] Performance regression detection
+- [ ] Security scanning integrated
+
+#### Test Maintenance
+- [ ] Tests updated when code changes
+- [ ] Test data refreshed regularly
+- [ ] Test environment isolated
+- [ ] Flaky tests identified and fixed
+- [ ] Test documentation maintained
+
+This comprehensive testing guide ensures the AI Excel Extraction System meets all quality, performance, and security requirements. Regular execution of these tests helps maintain system reliability and prevents regressions during development and deployment.
