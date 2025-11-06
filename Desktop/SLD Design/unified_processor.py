@@ -38,6 +38,7 @@ class ProcessingStatus:
         self.validation_results = {}
         self.corrections_needed = []
         self.final_project = None
+        self.transformer_banner = None
         
     def update_progress(self, step: str, progress: int, message: str = ""):
         """Update processing progress"""
@@ -56,7 +57,8 @@ class ProcessingStatus:
             'has_extraction_report': self.extraction_report is not None,
             'validation_results': self.validation_results,
             'corrections_needed': self.corrections_needed,
-            'has_final_project': self.final_project is not None
+            'has_final_project': self.final_project is not None,
+            'transformer_banner': self.transformer_banner
         }
 
 
@@ -178,6 +180,10 @@ class UnifiedDataProcessor:
                 final_project.created_date = datetime.now().isoformat()
                 
                 self.status.final_project = final_project
+                
+                # Add transformer dependency banner
+                self.status.transformer_banner = self._get_transformer_dependency_banner(final_project)
+                
                 self.status.update_progress("Complete", 100, "AI extraction completed successfully")
                 self.status.is_complete = True
                 
@@ -281,7 +287,15 @@ class UnifiedDataProcessor:
         Returns:
             Dictionary with correction interface data
         """
+        # Try to load from session state if not available in current instance
+        if not self.status.extraction_report and 'unified_processing_status' in st.session_state:
+            status_dict = st.session_state.unified_processing_status
+            if status_dict.get('has_extraction_report'):
+                logger.info("Found extraction report in session state, loading...")
+                # The status will be loaded by get_processing_status() in the interface
+        
         if not self.status.extraction_report:
+            logger.warning("No extraction report available in get_correction_interface_data")
             return {}
         
         correction_data = {
@@ -310,6 +324,7 @@ class UnifiedDataProcessor:
         # Get validation issues
         correction_data['validation_issues'] = self.status.validation_results.get('errors', []) + self.status.validation_results.get('warnings', [])
         
+        logger.info(f"Correction interface data generated: {len(correction_data['low_confidence_items'])} low confidence items")
         return correction_data
     
     def apply_manual_corrections(self, corrections: Dict[str, Any]) -> Tuple[bool, str, Project]:
@@ -354,18 +369,45 @@ class UnifiedDataProcessor:
         Returns:
             Dictionary with dashboard data
         """
+        # Try to load from session state if not available in current instance
+        if not self.status.final_project and 'unified_processing_status' in st.session_state:
+            status_dict = st.session_state.unified_processing_status
+            if status_dict.get('has_final_project'):
+                logger.info("Found final project in session state, checking...")
+                # Check if project is also in session state
+                if 'project' in st.session_state:
+                    logger.info("Found project in session state, using it")
+                    self.status.final_project = st.session_state.project
+        
         if not self.status.final_project:
+            logger.warning("No final project available in get_processing_dashboard_data")
             return {}
         
+        # If components_extracted == 0, render an empty state
+        components_extracted = len(self.status.final_project.loads) + len(self.status.final_project.cables) + len(self.status.final_project.buses) + len(self.status.final_project.transformers)
+        if components_extracted == 0:
+            return {
+                'empty_state': True,
+                'empty_message': "No components extracted. Check sheet mapping / thresholds / file path.",
+                'project_summary': self._get_project_summary(self.status.final_project),
+                'transformer_banner': self._get_transformer_dependency_banner(self.status.final_project)
+            }
+        
+        # Check for transformer dependency banner
+        transformer_banner = self._get_transformer_dependency_banner(self.status.final_project)
+        
         dashboard_data = {
+            'empty_state': False,
             'project_summary': self._get_project_summary(self.status.final_project),
             'extraction_metrics': self._get_extraction_metrics(),
             'validation_status': self.status.validation_results,
             'confidence_breakdown': self._get_confidence_breakdown(),
             'component_statistics': self._get_component_statistics(),
-            'processing_history': self._get_processing_history()
+            'processing_history': self._get_processing_history(),
+            'transformer_banner': transformer_banner
         }
         
+        logger.info(f"Dashboard data generated: {dashboard_data.get('project_summary', {}).get('total_loads', 0)} loads")
         return dashboard_data
     
     def _save_uploaded_file(self, uploaded_file) -> str:
@@ -417,12 +459,16 @@ class UnifiedDataProcessor:
         # Calculate bus loads
         for bus in project.buses:
             total_load = bus.calculate_total_load(project.loads)
-            demand_load = total_load * bus.diversity_factor
+            # Ensure diversity factor is never 0.000 (default to 1.0)
+            diversity_factor = bus.diversity_factor if bus.diversity_factor is not None and bus.diversity_factor > 0 else 1.0
+            demand_load = total_load * diversity_factor
             bus.demand_kw = demand_load
             bus.demand_kva = demand_load / 0.85  # Assuming average PF
         
-        # Calculate project totals
-        project.total_installed_capacity_kw = sum(load.power_kw for load in project.loads)
+        # Rollup totals from the model (not raw rows) - single source of truth
+        totals = self.ai_extractor.compute_totals(project)
+        
+        project.total_installed_capacity_kw = totals['total_power']
         project.total_demand_kw = sum(bus.demand_kw for bus in project.buses if bus.demand_kw)
         project.system_diversity_factor = project.total_demand_kw / project.total_installed_capacity_kw if project.total_installed_capacity_kw > 0 else 1.0
         
@@ -469,16 +515,25 @@ class UnifiedDataProcessor:
     
     def _get_project_summary(self, project: Project) -> Dict[str, Any]:
         """Get project summary data"""
+        # Use single source of truth for totals
+        totals = self.ai_extractor.compute_totals(project)
+        
+        # Enforce DF=1.0 at render time (double-guard)
+        df = project.system_diversity_factor
+        if df is None or df <= 0:
+            df = 1.0
+        
         return {
             'project_name': project.project_name,
             'standard': project.standard,
-            'total_loads': len(project.loads),
-            'total_cables': len(project.cables),
-            'total_buses': len(project.buses),
+            'total_loads': totals['total_loads'],
+            'total_cables': totals['total_cables'],
+            'total_buses': totals['total_buses'],
             'total_transformers': len(project.transformers),
-            'total_power_kw': project.total_installed_capacity_kw or 0,
+            'total_power_kw': totals['total_power'],
+            'total_cables_length': totals['total_len'],
             'total_demand_kw': project.total_demand_kw or 0,
-            'system_diversity_factor': project.system_diversity_factor or 0,
+            'system_diversity_factor': df,
             'main_transformer_kva': project.main_transformer_rating_kva or 0
         }
     
@@ -533,23 +588,24 @@ class UnifiedDataProcessor:
                 load_stats['load_types'][load_type] = 0
             load_stats['load_types'][load_type] += 1
         
-        # Cable statistics
-        cable_stats = {
-            'total_length_m': sum(cable.length_m for cable in project.cables),
-            'average_length_m': sum(cable.length_m for cable in project.cables) / len(project.cables) if project.cables else 0,
-            'size_distribution': {}
-        }
+        # Cable statistics - use single source of truth and fix aggregation
+        totals = self.ai_extractor.compute_totals(project)
         
-        for cable in project.cables:
-            size = cable.size_sqmm
-            if size not in cable_stats['size_distribution']:
-                cable_stats['size_distribution'][size] = 0
-            cable_stats['size_distribution'][size] += 1
+        # Build size distribution using Counter (dict of size -> count from model items only)
+        from collections import Counter
+        sizes = [c.size_sqmm for c in project.cables if isinstance(c.size_sqmm, (int, float))]
+        size_distribution = dict(Counter(sizes))  # This ensures each size appears once with correct count
+        
+        cable_stats = {
+            'total_length_m': totals['total_len'],
+            'average_length_m': totals['total_len'] / totals['total_cables'] if totals['total_cables'] > 0 else 0,
+            'size_distribution': size_distribution
+        }
         
         return {
             'loads': load_stats,
             'cables': cable_stats,
-            'buses': len(project.buses),
+            'buses': totals['total_buses'],
             'transformers': len(project.transformers)
         }
     
@@ -587,6 +643,32 @@ class UnifiedDataProcessor:
         
         return history
 
+    def _get_transformer_dependency_banner(self, project: Project) -> Dict[str, Any]:
+        """Get transformer dependency banner information"""
+        has_transformers = len(project.transformers) > 0
+        
+        if has_transformers:
+            return {
+                'show_banner': False,
+                'message': None,
+                'missing_features': []
+            }
+        else:
+            return {
+                'show_banner': True,
+                'message': "No transformer defined → fault levels, upstream impedance, and transformer loading not computed.",
+                'missing_features': [
+                    'fault_levels',
+                    'upstream_impedance',
+                    'transformer_loading'
+                ],
+                'continues_with': [
+                    'load_sums',
+                    'cable_checks',
+                    'voltage_drop'
+                ]
+            }
+
 
 class ProcessingInterface:
     """
@@ -617,6 +699,10 @@ class ProcessingInterface:
         # Show extraction report if available
         if status.extraction_report and status.is_complete:
             with st.expander("📊 Extraction Report", expanded=False):
+                # Transformer dependency banner
+                if hasattr(status, 'transformer_banner') and status.transformer_banner.get('show_banner', False):
+                    st.warning(f"⚠️ {status.transformer_banner['message']}")
+                
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
@@ -805,5 +891,6 @@ def get_processing_status() -> Optional[ProcessingStatus]:
         status.is_complete = status_dict.get('is_complete', False)
         status.validation_results = status_dict.get('validation_results', {})
         status.corrections_needed = status_dict.get('corrections_needed', [])
+        status.transformer_banner = status_dict.get('transformer_banner')
         return status
     return None

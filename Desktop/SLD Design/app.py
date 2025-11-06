@@ -294,15 +294,17 @@ class ElectricalDesignApp:
                 st.subheader("Environmental Conditions")
                 ambient_temp = st.number_input(
                     "Ambient Temperature (°C)",
-                    value=self.project.ambient_temperature_c,
+                    value=float(self.project.ambient_temperature_c),
                     min_value=-20.0,
-                    max_value=60.0
+                    max_value=60.0,
+                    step=0.5
                 )
                 altitude = st.number_input(
                     "Altitude (m)",
-                    value=self.project.altitude_m,
+                    value=float(self.project.altitude_m),
                     min_value=0.0,
-                    max_value=5000.0
+                    max_value=5000.0,
+                    step=10.0
                 )
                 voltage_options = ["LV", "MV", "HV"]
                 try:
@@ -323,8 +325,8 @@ class ElectricalDesignApp:
                 self.project.project_name = project_name
                 self.project.project_id = project_id
                 self.project.standard = standard
-                self.project.ambient_temperature_c = ambient_temp
-                self.project.altitude_m = altitude
+                self.project.ambient_temperature_c = float(ambient_temp)
+                self.project.altitude_m = float(altitude)
                 self.project.voltage_system = voltage_system
 
                 # Update calculation engine with new standard
@@ -342,8 +344,13 @@ class ElectricalDesignApp:
         # Initialize processing status
         initialize_processing_status()
         
-        # Create unified processor
-        unified_processor = create_unified_processor(self.project.standard if self.project else "IEC")
+        # Get or create unified processor - ensure all tabs share the same instance
+        if 'unified_processor' not in st.session_state:
+            st.session_state.unified_processor = create_unified_processor(
+                self.project.standard if self.project else "IEC"
+            )
+        
+        unified_processor = st.session_state.unified_processor
         
         # Main interface tabs
         tab1, tab2, tab3, tab4 = st.tabs(["📤 Upload Excel", "🔄 Processing Status", "✏️ Manual Review", "📊 Results Dashboard"])
@@ -444,8 +451,25 @@ class ElectricalDesignApp:
                     success, message, project = unified_processor.process_excel_upload(uploaded_file, project_name)
                     
                     if success:
+                        # Save extracted project to session state
+                        self.project = project
+                        st.session_state.project = self.project
+                        st.session_state.calculation_results = {}  # Clear any previous calculations
+                        
+                        # Initialize unified processor with extracted project
+                        try:
+                            self.unified_processor = create_unified_processor(
+                                self.project.standard if self.project else "IEC"
+                            )
+                        except Exception as e:
+                            st.warning(f"Failed to initialize processor with extracted project: {e}")
+                        
                         st.success(f"✅ {message}")
-                        st.info("📊 Switch to the 'Processing Status' tab to see detailed results")
+                        st.success(f"✅ Project '{self.project.project_name}' created with {len(self.project.loads)} loads, {len(self.project.buses)} buses")
+                        st.info("📊 You can now:")
+                        st.info("   • Switch to the 'Manual Review' tab to review extracted data")
+                        st.info("   • Switch to the 'Results Dashboard' to see extraction summary")
+                        st.info("   • Navigate to other project pages to work with the data")
                     else:
                         st.error(f"❌ {message}")
                         
@@ -474,7 +498,7 @@ class ElectricalDesignApp:
                                - Create projects through the standard interface
                                - Export your data to standard formats and retry
                             """)
-                        
+                    
                     st.rerun()
         else:
             st.info("👆 Please upload an Excel file and provide a project name to start extraction")

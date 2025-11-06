@@ -249,7 +249,7 @@ class Bus:
     # Loading calculations
     total_load_kw: Optional[float] = None
     total_load_kva: Optional[float] = None
-    diversity_factor: float = 1.0
+    diversity_factor: float = 1.0  # Default to 1.0 (never 0.000)
     demand_kw: Optional[float] = None
     demand_kva: Optional[float] = None
 
